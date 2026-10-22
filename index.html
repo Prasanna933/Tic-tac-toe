@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tic Tac Toe</title>
+<style>
+:root{
+  --bg:#e8f1ff; --ink:#1f2a44; --line:#1f2a44; --x:#e11d48; --o:#2563eb; --cell:#ffffff; --hl:#fde047; --accent:#7c3aed;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#141a33;--ink:#eef0ff;--line:#eef0ff;--x:#fb7185;--o:#60a5fa;--cell:#1e2749;--hl:#854d0e;--accent:#a78bfa;}
+}
+:root[data-theme="dark"]{--bg:#141a33;--ink:#eef0ff;--line:#eef0ff;--x:#fb7185;--o:#60a5fa;--cell:#1e2749;--hl:#854d0e;--accent:#a78bfa;}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,"Times New Roman",serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:16px}
+h1{margin:0;font-size:2.8rem;font-weight:700;color:var(--accent);text-align:center}
+.welcome{margin:0;text-align:center;max-width:380px;line-height:1.4;font-size:1.4rem;font-weight:700}
+h2{margin:0;font-size:1.7rem;font-weight:700}
+.screen{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}
+.hidden{display:none}
+#levels{display:flex;flex-direction:column;gap:10px;width:min(92vw,400px)}
+button.btn{font:inherit;font-size:1.4rem;font-weight:700;padding:16px 18px;border:2px solid var(--line);border-radius:6px;background:var(--cell);color:var(--ink);cursor:pointer;text-align:left;display:flex;justify-content:space-between;gap:12px}
+button.btn small{opacity:.75;font-size:1.05rem;font-weight:400;align-self:center}
+button.btn:hover{background:var(--hl)}
+button.btn:focus-visible,.cell:focus-visible,.small:focus-visible{outline:3px solid var(--o);outline-offset:2px}
+#status{font-size:2rem;font-weight:700;min-height:1.6em;text-align:center}
+#board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:8px;width:min(92vw,400px);height:min(92vw,400px)}
+.cell{background:var(--cell);border:2px solid var(--accent);border-radius:6px;font:700 clamp(3rem,20vw,6rem) Georgia,serif;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;min-width:0;min-height:0;overflow:hidden;line-height:1}
+.cell.x{color:var(--x)} .cell.o{color:var(--o)}
+.cell.win{background:var(--hl)}
+.cell:disabled{cursor:default}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+.small{font:inherit;font-size:1.3rem;font-weight:700;padding:12px 22px;border:2px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;cursor:pointer}
+#score{font-size:1.3rem;font-weight:700}
+#mode{font-size:1.4rem;font-weight:700;text-align:center}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50}
+#banner{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;text-align:center;background:var(--cell);border:4px solid var(--accent);border-radius:18px;padding:24px 28px;font-size:2.2rem;font-weight:700;line-height:1.25;box-shadow:0 10px 40px rgba(0,0,0,.35);max-width:90vw;cursor:pointer;animation:pop .5s ease-out}
+#banner small{display:block;font-size:1.3rem;font-weight:400;margin-top:10px}
+@keyframes pop{from{transform:translate(-50%,-50%) scale(.3);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){#banner{animation:none}}
+</style>
+</head>
+<body>
+<h1>Tic Tac Toe</h1>
+
+<div id="menu" class="screen">
+  <p class="welcome">SR Gaming Infotech welcomes you. Enjoy our product.</p>
+  <h2>Choose a difficulty</h2>
+  <div id="levels"></div>
+  <button class="small" id="two">Play with a friend (2 players)</button>
+</div>
+
+<div id="game" class="screen hidden">
+  <div id="mode"></div>
+  <div id="status" aria-live="polite"></div>
+  <div id="board"></div>
+  <div id="score"></div>
+  <div class="row">
+    <button class="small" id="reset">Restart</button>
+    <button class="small" id="change">New game</button>
+  </div>
+</div>
+
+<canvas id="fx"></canvas>
+<div id="banner" class="hidden"></div>
+
+<script>
+(function(){
+  var LINES=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  var LEVELS=[
+    {name:'Beginner',desc:'Plays randomly',smart:0,color:'#22c55e'},
+    {name:'Easy',desc:'Often misses',smart:0.35,color:'#84cc16'},
+    {name:'Medium',desc:'Sometimes slips',smart:0.65,color:'#f59e0b'},
+    {name:'Hard',desc:'Rarely slips',smart:0.9,color:'#f97316'},
+    {name:'Unbeatable',desc:'Never loses',smart:1,color:'#ef4444'}
+  ];
+  var menuEl=document.getElementById('menu'),gameEl=document.getElementById('game');
+  var boardEl=document.getElementById('board'),statusEl=document.getElementById('status'),scoreEl=document.getElementById('score'),modeEl=document.getElementById('mode');
+  var levelsEl=document.getElementById('levels');
+  var b,turn,over,vsCpu=false,level=0,score,cells=[];
+
+  LEVELS.forEach(function(L,i){
+    var btn=document.createElement('button');btn.className='btn';
+    btn.innerHTML='<span>'+(i+1)+'. '+L.name+'</span><small>'+L.desc+'</small>';
+    btn.style.borderLeft='12px solid '+L.color;
+    btn.addEventListener('click',function(){start(true,i)});
+    levelsEl.appendChild(btn);
+  });
+  for(var i=0;i<9;i++){(function(i){
+    var c=document.createElement('button');c.className='cell';c.setAttribute('aria-label','Square '+(i+1));
+    c.addEventListener('click',function(){play(i,true)});boardEl.appendChild(c);cells.push(c);
+  })(i)}
+
+  function winner(bd){for(var k=0;k<LINES.length;k++){var l=LINES[k];if(bd[l[0]]&&bd[l[0]]===bd[l[1]]&&bd[l[0]]===bd[l[2]])return{p:bd[l[0]],l:l}}return null}
+  function start(cpu,lv){
+    vsCpu=cpu;level=lv||0;score={X:0,O:0,D:0};
+    modeEl.textContent=cpu?('Level '+(level+1)+': '+LEVELS[level].name+' (you are X)'):'2 players';
+    menuEl.classList.add('hidden');gameEl.classList.remove('hidden');reset();
+  }
+  function reset(){stopFx();b=Array(9).fill('');turn='X';over=false;cells.forEach(function(c){c.textContent='';c.className='cell';c.disabled=false});render()}
+  function render(msg){
+    statusEl.textContent=msg||('Turn: '+turn);
+    scoreEl.textContent='X wins: '+score.X+'   O wins: '+score.O+'   Draws: '+score.D;
+  }
+  function play(i,human){
+    if(over||b[i])return;
+    if(vsCpu&&human&&turn==='O')return;
+    b[i]=turn;cells[i].textContent=turn;cells[i].classList.add(turn.toLowerCase());cells[i].disabled=true;
+    var w=winner(b);
+    if(w){over=true;score[w.p]++;w.l.forEach(function(n){cells[n].classList.add('win')});cells.forEach(function(c){c.disabled=true});render(w.p+' wins!');celebrate(w.p);return}
+    if(b.every(Boolean)){over=true;score.D++;render("It's a draw.");setTimeout(reset,800);return}
+    turn=turn==='X'?'O':'X';render();
+    if(vsCpu&&turn==='O')setTimeout(cpu,350);
+  }
+  // Minimax: O maximizes, X minimizes. Prefers faster wins and slower losses.
+  function minimax(bd,p,depth){
+    var w=winner(bd);
+    if(w)return w.p==='O'?10-depth:depth-10;
+    if(bd.every(Boolean))return 0;
+    var best=p==='O'?-100:100;
+    for(var i=0;i<9;i++){if(!bd[i]){
+      bd[i]=p;var s=minimax(bd,p==='O'?'X':'O',depth+1);bd[i]='';
+      if(p==='O'?s>best:s<best)best=s;
+    }}
+    return best;
+  }
+  function bestMove(){
+    var best=-100,moves=[];
+    for(var i=0;i<9;i++){if(!b[i]){
+      b[i]='O';var s=minimax(b,'X',1);b[i]='';
+      if(s>best){best=s;moves=[i]}else if(s===best)moves.push(i);
+    }}
+    return moves[Math.floor(Math.random()*moves.length)];
+  }
+  function cpu(){
+    if(over)return;
+    var empty=[];b.forEach(function(v,i){if(!v)empty.push(i)});
+    var m=Math.random()<LEVELS[level].smart?bestMove():empty[Math.floor(Math.random()*empty.length)];
+    play(m,false);
+  }
+  var FL=['🌸','🌼','🌹','🌺','🌻','💐','🌷'];
+  var fx=document.getElementById('fx'),ctx=fx.getContext('2d'),bannerEl=document.getElementById('banner'),parts=[],flws=[],raf=0,endAt=0,frame=0,hideT=0;
+  function fit(){fx.width=window.innerWidth;fx.height=window.innerHeight}
+  window.addEventListener('resize',fit);fit();
+  function burst(){
+    var x=fx.width*(0.15+Math.random()*0.7),y=fx.height*(0.1+Math.random()*0.4),h=Math.floor(Math.random()*360);
+    for(var i=0;i<70;i++){var a=Math.random()*6.2832,s=1.5+Math.random()*5;
+      parts.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:70+Math.random()*30,c:'hsl('+h+',100%,60%)'})}
+  }
+  function loop(){
+    ctx.clearRect(0,0,fx.width,fx.height);frame++;
+    var on=Date.now()<endAt;
+    if(on){
+      if(frame%22===0)burst();
+      if(frame%5===0)flws.push({x:Math.random()*fx.width,y:-40,vy:1.5+Math.random()*2.5,vx:(Math.random()-0.5)*1.2,r:Math.random()*6,vr:(Math.random()-0.5)*0.1,s:26+Math.random()*24,e:FL[Math.floor(Math.random()*FL.length)]});
+    }
+    for(var i=parts.length-1;i>=0;i--){var p=parts[i];
+      p.x+=p.vx;p.y+=p.vy;p.vy+=0.06;p.vx*=0.99;p.life--;
+      if(p.life<=0){parts.splice(i,1);continue}
+      ctx.globalAlpha=Math.min(1,p.life/40);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,4,4);
+    }
+    ctx.globalAlpha=1;ctx.textAlign='center';
+    for(var j=flws.length-1;j>=0;j--){var f=flws[j];
+      f.y+=f.vy;f.x+=f.vx+Math.sin(f.y/40);f.r+=f.vr;
+      if(f.y>fx.height+50){flws.splice(j,1);continue}
+      ctx.save();ctx.translate(f.x,f.y);ctx.rotate(f.r);ctx.font=f.s+'px serif';ctx.fillText(f.e,0,0);ctx.restore();
+    }
+    if(on||parts.length||flws.length){raf=requestAnimationFrame(loop)}else{ctx.clearRect(0,0,fx.width,fx.height);raf=0}
+  }
+  function stopFx(){
+    endAt=0;parts=[];flws=[];clearTimeout(hideT);bannerEl.classList.add('hidden');
+    if(raf){cancelAnimationFrame(raf);raf=0}
+    ctx.clearRect(0,0,fx.width,fx.height);
+  }
+  function celebrate(p){
+    var won=!vsCpu||p==='X';
+    bannerEl.innerHTML=won?('🏆 '+(vsCpu?'You won! Congratulations!':'Player '+p+' wins! Congratulations!')+'<small>Well played, champion! 🌸🌹🌼</small>'):('🤖 Computer wins!<small>Good try. Better luck next time!</small>');
+    bannerEl.classList.remove('hidden');
+    clearTimeout(hideT);hideT=setTimeout(function(){bannerEl.classList.add('hidden')},5000);
+    if(won&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){endAt=Date.now()+6000;burst();if(!raf)raf=requestAnimationFrame(loop)}
+  }
+  var swallow=false;
+  document.addEventListener('pointerdown',function(e){
+    if(bannerEl.classList.contains('hidden'))return;
+    e.preventDefault();e.stopPropagation();
+    swallow=true;setTimeout(function(){swallow=false},500);
+    reset();
+  },true);
+  document.addEventListener('click',function(e){
+    if(swallow){e.preventDefault();e.stopPropagation();swallow=false}
+  },true);
+  document.getElementById('two').addEventListener('click',function(){start(false)});
+  document.getElementById('reset').addEventListener('click',reset);
+  document.getElementById('change').addEventListener('click',function(){stopFx();gameEl.classList.add('hidden');menuEl.classList.remove('hidden')});
+})();
+</script>
+</body>
+</html>
